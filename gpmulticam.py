@@ -3,6 +3,7 @@
 # gphoto2 MultiCam Tethering Utility
 # https://github.com/acropup/gphoto2-MultiCam-Tethering/
 # Requires gphoto2 (linux-only): http://gphoto.org/doc/manual/using-gphoto2.html
+# To run from command line, type: python3 -i gpmulticam.py
 
 import re
 import os
@@ -13,25 +14,26 @@ name_ind = 0
 port_ind = 1
 
 filename_format = '{0} - {1}.jpg' #0 is filename, 1 is camera name
-
-#TODO: notes for how to use subprocess
-# p = subprocess.run(['dir', '/p'], shell=True, stdout=subprocess.PIPE, universal_newlines=True)
-# p = subprocess.run(['xdg-open', picfilename.jpg], shell=True, stdout=subprocess.PIPE, universal_newlines=True)
-
-# p= subprocess.Popen('ping google.com /t', shell=True, stdout=subprocess.PIPE, universal_newlines=True)
-# p.stdout.readline()
+simultaneous_capture = True
 
 def main():
-  print('Welcome to Better Way Camera Tethering')
+  welcome = '*' * 3 + ' Welcome to Better Way Camera Tethering ' + '*' * 3
+  print('*' * len(welcome))
+  print(welcome)
+  print('*' * len(welcome))
+  print()
+  input('Press Enter to find cameras...')
+  
   initCameras()
   while(True):
+    print('-'*40)
     cmd = input('{} > '.format(os.getcwd())).strip()
     if (not processCommand(cmd)):
       break
 
 def queryCameras():
   "queries for connected cameras, and returns an array of their port mappings"
-  p = subprocess.run(['gphoto2', '--auto-detect'], shell=True, stdout=subprocess.PIPE, universal_newlines=True)
+  p = subprocess.run(['gphoto2', '--auto-detect'], stdout=subprocess.PIPE, universal_newlines=True)
   # p.stdout should return something like this:
   # Model                          Port                                             
   # ----------------------------------------------------------
@@ -83,20 +85,21 @@ def initCameras():
   print()
   listCameras()
   print()
-  renameCameras()
-  print()
-  listCameras()
+  if (input_yn('Name cameras?')):
+    renameCameras()
+    print()
+    listCameras()
 
 def openPicture(filename):
   if (os.path.exists(filename)):
     #This should open the image using the default image viewer
-    subprocess.run(['xdg-open', filename], shell=True, stdout=subprocess.PIPE, universal_newlines=True)
+    subprocess.Popen(['xdg-open', filename], universal_newlines=True)
   else:
     print('Could not open "{}"'.format(filename))
 
 def takePicture(port, filename):
   cmd_params = ['gphoto2', '--port', port, '--capture-image-and-download', '--force-overwrite', '--filename', filename]
-  subprocess.run(cmd_params, shell=True)
+  subprocess.run(cmd_params, stdout=subprocess.DEVNULL)
 
 def takePictures(subject):
   procs = []
@@ -109,26 +112,36 @@ def takePictures(subject):
       if (not input_yn('File with same name already exists. Overwrite?')):
         print('Aborting capture sequence. File already exists:\n{}'.format(os.path.abspath(filename)))
         return
-    cmd_params = ['gphoto2', '--port', c[port_ind], '--capture-image-and-download', '--force-overwrite', '--filename', os.path.abspath(filename)]
-    cmd = ' '.join(cmd_params)
-    print(cmd)
-    subprocess.run(cmd_params, shell=True)
-    openPicture(filename)
-#TODO: if we need to run these in parallel, use Popen
-#    procs += subprocess.Popen(cmd_params, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
-#  procs[0].communicate()
-#  status = p.returncode
-#  output = p.stdout
+    cmd_params = ['gphoto2', '--port', c[port_ind], '--capture-image-and-download', '--force-overwrite', '--filename', filename]
+    print('Taking picture: "{}"'.format(filename))
+
+    if (not simultaneous_capture):
+      subprocess.run(cmd_params, stdout=subprocess.PIPE)    #this line blocks until the photo capture and download completes
+      openPicture(filename)
+    else:
+      procs.append([filename, subprocess.Popen(cmd_params, stdout=subprocess.PIPE, universal_newlines=True)])
+
+  if (simultaneous_capture):
+    for p in procs:
+      filename = p[0]
+      proc = p[1]
+      #wait up to 8 seconds for photo capture to complete (typically takes 3s), and just hope it was successful 
+      proc.wait(timeout=8)
+      openPicture(filename)
+
 
 def processCommand(cmd):
   global filename_format
+  global simultaneous_capture
   if (cmd == ''):
     print('''Commands:
   fc - find cameras
   cn - camera names
+  sc - toggle sequential/simultaneous capture
   ff - filename format (ex. "{0} - {1}.jpg")
   cd - change directory
   ls - list directory contents
+  od - open directory in file browser
   q  - quit
 
 Photo capture:
@@ -165,6 +178,10 @@ Photo capture:
           renameCameras()
       else:
         print('There are no cameras to name. Use fc command to find cameras.')
+        
+    elif (c == 'sc'):  #Simultaneous capture toggle
+      simultaneous_capture = not simultaneous_capture
+      print('Capture mode: ' + ('Simultaneous' if simultaneous_capture else 'Sequential'))
     
     elif (c == 'ff'):  #Change filename format
       print('Filename format: "{}"'.format(filename_format))
@@ -206,6 +223,12 @@ Photo capture:
           print('...and {} more. Show all with "ls -a"'.format(len(files)-maxfiles))
       else:
         print('No files.')
+
+    elif (c == 'od'):   #Open directory in file browser
+      print('Opening file browser to "{}"'.format(os.getcwd()))
+      #TODO This only works now because openPicture depends on xdg-open to do the right thing
+      openPicture('./')
+
   elif (len(cmd) >= 3):  #Take picture
     takePictures(cmd)
     
