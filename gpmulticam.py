@@ -15,6 +15,14 @@ port_ind = 1
 
 filename_format = '{0} - {1}.jpg' #0 is filename, 1 is camera name
 simultaneous_capture = True
+keep_on_camera = True
+
+#TODO: notes for how to use subprocess
+# p = subprocess.run(['dir', '/p'], stdout=subprocess.PIPE, universal_newlines=True)
+# p = subprocess.run(['xdg-open', picfilename.jpg], stdout=subprocess.PIPE, universal_newlines=True)
+
+# p= subprocess.Popen('ping google.com /t', stdout=subprocess.PIPE, universal_newlines=True)
+# p.stdout.readline()
 
 def main():
   welcome = '*' * 3 + ' Welcome to Better Way Camera Tethering ' + '*' * 3
@@ -125,19 +133,24 @@ def takePictures(subject):
     for p in procs:
       filename = p[0]
       proc = p[1]
-      #wait up to 8 seconds for photo capture to complete (typically takes 3s), and just hope it was successful 
-      proc.wait(timeout=8)
-      openPicture(filename)
+      #wait up to 10 seconds for photo capture to complete (typically takes 3s), and just hope it was successful
+      try: 
+        proc.wait(timeout=10)
+        openPicture(filename)
+      except TimeoutExpired:
+        print("Camera failed to take picture and download within 10 seconds.")
 
 
 def processCommand(cmd):
   global filename_format
   global simultaneous_capture
+  global keep_on_camera
   if (cmd == ''):
     print('''Commands:
   fc - find cameras
   cn - camera names
   sc - toggle sequential/simultaneous capture
+  kc - toggle keep photo on camera card
   ff - filename format (ex. "{0} - {1}.jpg")
   cd - change directory
   ls - list directory contents
@@ -182,6 +195,10 @@ Photo capture:
     elif (c == 'sc'):  #Simultaneous capture toggle
       simultaneous_capture = not simultaneous_capture
       print('Capture mode: ' + ('Simultaneous' if simultaneous_capture else 'Sequential'))
+    
+    elif (c == 'kc'):  #Keep on camera card toggle
+      keep_on_camera = not keep_on_camera
+      print('Camera card retention mode: ' + ('Keep on camera card' if keep_on_camera else 'Delete from camera after download'))
     
     elif (c == 'ff'):  #Change filename format
       print('Filename format: "{}"'.format(filename_format))
